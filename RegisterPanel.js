@@ -48,7 +48,7 @@ export default function RegisterPanel({ navigation }) {
           [{ 
             text: 'Tamam',
             onPress: () => navigation.goBack()
-          }]
+          }]    
         );
       }
     } catch (error) {

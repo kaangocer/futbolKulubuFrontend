@@ -17,10 +17,8 @@ function AidatListeleme() {
   });
   const [selectedAidat, setSelectedAidat] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showUpdateAylar, setShowUpdateAylar] = useState(false);
 
-
-
-  
   const aylar = [
     { label: 'Ocak', value: '1' },
     { label: 'Şubat', value: '2' },
@@ -448,14 +446,47 @@ function AidatListeleme() {
               />
             </View>
 
+            {/* Ay seçimi için dropdown */}
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Ay:</Text>
-              <TextInput
-                style={styles.input}
-                value={selectedAidat.Ay.toString()}
-                onChangeText={(value) => handleUpdateChange('Ay', value)}
-                keyboardType="numeric"
-              />
+              <TouchableOpacity
+                style={styles.aySelector}
+                onPress={() => setShowUpdateAylar(!showUpdateAylar)}
+              >
+                <Text style={styles.aySelectorText}>
+                  {selectedAidat.Ay ? aylar.find(a => a.value === selectedAidat.Ay.toString())?.label : 'Ay Seçiniz'}
+                </Text>
+              </TouchableOpacity>
+              
+              {showUpdateAylar && (
+                <View style={styles.aylarDropdownContainer}>
+                  <ScrollView 
+                    style={styles.aylarScrollView}
+                    nestedScrollEnabled={true}
+                  >
+                    {aylar.map(ay => (
+                      <TouchableOpacity
+                        key={ay.value}
+                        style={[
+                          styles.ayItem,
+                          selectedAidat.Ay.toString() === ay.value && styles.selectedAy
+                        ]}
+                        onPress={() => {
+                          handleUpdateChange('Ay', parseInt(ay.value));
+                          setShowUpdateAylar(false);
+                        }}
+                      >
+                        <Text style={[
+                          styles.ayItemText,
+                          selectedAidat.Ay.toString() === ay.value && styles.selectedAyText
+                        ]}>
+                          {ay.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             <View style={styles.inputContainer}>
