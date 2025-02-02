@@ -72,28 +72,86 @@ function AidatListeleme() {
     getUyeler();
   }, []);
 
-  // Üye filtreleme
+  // Üye filtreleme - güncellendi
   const handleSearch = (text) => {
     setSearchText(text);
+    if (!text.trim()) {
+      setFilteredUyeler(uyeler);
+      return;
+    }
+    
     const filtered = uyeler.filter(uye => 
-      `${uye.Ad} ${uye.SoyAd} ${uye.TcNo}`
-        .toLowerCase()
-        .includes(text.toLowerCase())
+      `${uye.Ad?.toLowerCase()} ${uye.SoyAd?.toLowerCase()} ${uye.TcNo}`
+        .includes(text.toLowerCase().trim())
     );
     setFilteredUyeler(filtered);
   };
 
+  // Miktar için input validation fonksiyonu
+  const validateMiktar = (value) => {
+    // Boş değer kontrolü
+    if (!value) return '';
+    
+    // Sadece sayılar ve tek nokta karakterine izin ver
+    const cleanValue = value.replace(/[^0-9.]/g, '');
+    
+    // Birden fazla nokta varsa ilkini al
+    const parts = cleanValue.split('.');
+    if (parts.length > 2) {
+      return parts[0] + '.' + parts[1];
+    }
+    
+    // Maksimum 2 ondalık basamak ve toplam 10 karakter kontrolü
+    if (parts[1]?.length > 2) {
+      return parts[0] + '.' + parts[1].slice(0, 2);
+    }
+    
+    if (cleanValue.length > 10) {
+      return cleanValue.slice(0, 10);
+    }
+    
+    return cleanValue;
+  };
+
   const handleChange = (name, value) => {
-    setYeniAidat(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    if (name === 'Miktar') {
+      const validatedValue = validateMiktar(value);
+      // Negatif değer kontrolü
+      if (parseFloat(validatedValue) < 0) {
+        alert('Negatif değer girilemez!');
+        return;
+      }
+      setYeniAidat(prev => ({
+        ...prev,
+        [name]: validatedValue
+      }));
+    } else {
+      setYeniAidat(prev => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
 
   const handleSubmit = async () => {
     try {
       if (!yeniAidat.UyeId || !yeniAidat.Yil || !yeniAidat.Ay || !yeniAidat.Miktar) {
         alert('Lütfen tüm alanları doldurunuz');
+        return;
+      }
+
+      // Miktar validasyonları
+      const miktar = parseFloat(yeniAidat.Miktar);
+      if (isNaN(miktar)) {
+        alert('Geçerli bir miktar giriniz');
+        return;
+      }
+      if (miktar <= 0) {
+        alert('Miktar 0\'dan büyük olmalıdır');
+        return;
+      }
+      if (miktar > 999999) {
+        alert('Çok yüksek bir miktar girdiniz');
         return;
       }
 
@@ -109,29 +167,44 @@ function AidatListeleme() {
         return;
       }
 
-      const formattedAidat = {
-        UyeId: parseInt(yeniAidat.UyeId),
-        Yil: parseInt(yeniAidat.Yil),
-        Ay: parseInt(yeniAidat.Ay),
-        Miktar: parseFloat(yeniAidat.Miktar),
-        Durum: yeniAidat.Durum,
-        OdemeTarihi: new Date().toISOString()
-      };
+      Alert.alert(
+        'Onay',
+        'Aidat kaydı eklemek istediğinizden emin misiniz?',
+        [
+          {
+            text: 'İptal',
+            style: 'cancel'
+          },
+          {
+            text: 'Ekle',
+            onPress: async () => {
+              const formattedAidat = {
+                UyeId: parseInt(yeniAidat.UyeId),
+                Yil: parseInt(yeniAidat.Yil),
+                Ay: parseInt(yeniAidat.Ay),
+                Miktar: parseFloat(yeniAidat.Miktar),
+                Durum: yeniAidat.Durum,
+                OdemeTarihi: new Date().toISOString()
+              };
 
-      await axios.post('http://192.168.1.21:3000/aidatlar', formattedAidat);
-      alert('Aidat başarıyla eklendi');
-      
-      // Formu sıfırla
-      setYeniAidat({
-        UyeId: yeniAidat.UyeId, // Seçili üyeyi koru
-        Yil: new Date().getFullYear().toString(),
-        Ay: '',
-        Miktar: '',
-        Durum: 'Ödendi'
-      });
-      
-      // Aidat listesini güncelle
-      getUyeAidatlari(yeniAidat.UyeId);
+              await axios.post('http://192.168.1.21:3000/aidatlar', formattedAidat);
+              alert('Aidat başarıyla eklendi');
+              
+              // Formu sıfırla
+              setYeniAidat({
+                UyeId: yeniAidat.UyeId,
+                Yil: new Date().getFullYear().toString(),
+                Ay: '',
+                Miktar: '',
+                Durum: 'Ödendi'
+              });
+              
+              // Aidat listesini güncelle
+              getUyeAidatlari(yeniAidat.UyeId);
+            }
+          }
+        ]
+      );
     } catch (error) {
       console.error('Hata:', error);
       alert('Aidat eklenirken hata oluştu: ' + error.message);
@@ -152,9 +225,13 @@ function AidatListeleme() {
     }
   };
 
-  // Yıla göre aidatları grupla
+  // Yıla göre aidatları grupla ve eksik yılları ekle
   const groupByYil = (aidatlar) => {
-    return aidatlar.reduce((groups, aidat) => {
+    // Mevcut yılı al
+    const currentYear = new Date().getFullYear();
+    
+    // Önce mevcut aidatları yıllara göre grupla
+    const groupedAidatlar = aidatlar.reduce((groups, aidat) => {
       const yil = aidat.Yil;
       if (!groups[yil]) {
         groups[yil] = [];
@@ -162,6 +239,23 @@ function AidatListeleme() {
       groups[yil].push(aidat);
       return groups;
     }, {});
+
+    // Son 1 yıl ve gelecek 1 yıl için boş grupları ekle
+    for (let year = currentYear - 1; year <= currentYear + 1; year++) {
+      if (!groupedAidatlar[year]) {
+        groupedAidatlar[year] = [];
+      }
+    }
+
+    // Yılları sırala (büyükten küçüğe)
+    return Object.fromEntries(
+      Object.entries(groupedAidatlar)
+        .filter(([year]) => {
+          const yearNum = parseInt(year);
+          return yearNum >= currentYear - 1 && yearNum <= currentYear + 1;
+        })
+        .sort(([yearA], [yearB]) => parseInt(yearB) - parseInt(yearA))
+    );
   };
 
   // Aidata tıklandığında
@@ -175,18 +269,33 @@ function AidatListeleme() {
     try {
       if (!selectedAidat?.AidatId) return;
 
-      const updateData = {
-        Yil: selectedAidat.Yil,
-        Ay: selectedAidat.Ay,
-        Miktar: selectedAidat.Miktar,
-        Durum: selectedAidat.Durum,
-        OdemeTarihi: new Date().toISOString()
-      };
+      Alert.alert(
+        'Onay',
+        'Aidat kaydını güncellemek istediğinizden emin misiniz?',
+        [
+          {
+            text: 'İptal',
+            style: 'cancel'
+          },
+          {
+            text: 'Güncelle',
+            onPress: async () => {
+              const updateData = {
+                Yil: selectedAidat.Yil,
+                Ay: selectedAidat.Ay,
+                Miktar: selectedAidat.Miktar,
+                Durum: selectedAidat.Durum,
+                OdemeTarihi: new Date().toISOString()
+              };
 
-      await axios.put(`http://192.168.1.21:3000/aidatlar/${selectedAidat.AidatId}`, updateData);
-      alert('Aidat başarıyla güncellendi');
-      setShowUpdateModal(false);
-      getUyeAidatlari(selectedAidat.UyeId); // Listeyi yenile
+              await axios.put(`http://192.168.1.21:3000/aidatlar/${selectedAidat.AidatId}`, updateData);
+              alert('Aidat başarıyla güncellendi');
+              setShowUpdateModal(false);
+              getUyeAidatlari(selectedAidat.UyeId);
+            }
+          }
+        ]
+      );
     } catch (error) {
       console.error('Güncelleme hatası:', error);
       alert('Güncelleme sırasında bir hata oluştu');
@@ -230,10 +339,23 @@ function AidatListeleme() {
 
   // Güncelleme modalındaki değişiklikleri handle et
   const handleUpdateChange = (field, value) => {
-    setSelectedAidat(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    if (field === 'Miktar') {
+      const validatedValue = validateMiktar(value);
+      // Negatif değer kontrolü
+      if (parseFloat(validatedValue) < 0) {
+        alert('Negatif değer girilemez!');
+        return;
+      }
+      setSelectedAidat(prev => ({
+        ...prev,
+        [field]: validatedValue
+      }));
+    } else {
+      setSelectedAidat(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
   };
 
   // Ay seçimi için dropdown
@@ -331,7 +453,12 @@ function AidatListeleme() {
               <Text style={styles.subtitle}>Aidat Geçmişi</Text>
               {Object.entries(groupByYil(seciliUyeAidatlari)).map(([yil, aidatlar]) => (
                 <View key={yil} style={styles.yilContainer}>
-                  <Text style={styles.yilBaslik}>{yil}</Text>
+                  <Text style={[
+                    styles.yilBaslik,
+                    parseInt(yil) === new Date().getFullYear() && styles.currentYearTitle
+                  ]}>
+                    {yil} {parseInt(yil) === new Date().getFullYear() && '(Mevcut Yıl)'}
+                  </Text>
                   <View style={styles.aylarGrid}>
                     {aylar.map(ay => {
                       const aidat = aidatlar.find(a => a.Ay.toString() === ay.value);
@@ -388,8 +515,9 @@ function AidatListeleme() {
                   style={styles.input}
                   value={yeniAidat.Miktar}
                   onChangeText={(value) => handleChange('Miktar', value)}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
                   placeholder="0.00"
+                  maxLength={10}
                 />
               </View>
 
@@ -495,7 +623,9 @@ function AidatListeleme() {
                 style={styles.input}
                 value={selectedAidat.Miktar.toString()}
                 onChangeText={(value) => handleUpdateChange('Miktar', value)}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                maxLength={10}
               />
             </View>
 
@@ -568,9 +698,19 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#ddd',
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
+    backgroundColor: '#fff',
+    fontSize: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.0,
+    elevation: 1,
   },
   uyeListContainer: {
     height: 300,
@@ -586,11 +726,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
+    borderBottomColor: '#eee',
     alignItems: 'center',
+    backgroundColor: '#fff',
+    marginHorizontal: 5,
+    marginVertical: 3,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.0,
+    elevation: 1,
   },
   selectedUye: {
     backgroundColor: '#e3f2fd',
+    borderColor: '#2196F3',
+    borderWidth: 1,
   },
   uyeInfo: {
     flex: 1,
@@ -598,10 +752,12 @@ const styles = StyleSheet.create({
   uyeText: {
     fontSize: 16,
     fontWeight: '500',
+    color: '#333',
   },
   tcText: {
     fontSize: 14,
     color: '#666',
+    marginTop: 4,
   },
   selectedText: {
     color: '#4CAF50',
@@ -701,9 +857,11 @@ const styles = StyleSheet.create({
   },
   aidatGecmisiContainer: {
     marginTop: 20,
-    padding: 10,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
   subtitle: {
     fontSize: 18,
@@ -718,8 +876,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 10,
     backgroundColor: '#e0e0e0',
-    padding: 5,
+    padding: 8,
     borderRadius: 4,
+    textAlign: 'center',
   },
   aylarGrid: {
     flexDirection: 'row',
@@ -727,13 +886,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   ayKutu: {
-    width: '31%', // 3 sütun için
-    marginBottom: 10,
-    padding: 8,
+    width: '31%',
+    marginBottom: 12,
+    padding: 10,
     backgroundColor: 'white',
-    borderRadius: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e9ecef',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   ayLabel: {
     fontSize: 12,
@@ -742,18 +909,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   aidatDurum: {
-    padding: 4,
-    borderRadius: 4,
+    padding: 6,
+    borderRadius: 6,
     alignItems: 'center',
+    marginTop: 4,
   },
   aidatMiktar: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 12,
+    fontSize: 14,
   },
   aidatDurumText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: 12,
+    marginTop: 2,
   },
   noAidat: {
     textAlign: 'center',
@@ -774,9 +943,17 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: 'white',
     padding: 20,
-    borderRadius: 8,
+    borderRadius: 12,
     width: '90%',
     maxWidth: 500,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    shadowOpacity: 0.27,
+    shadowRadius: 4.65,
+    elevation: 6,
   },
   modalTitle: {
     fontSize: 18,
@@ -790,10 +967,18 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   modalButton: {
-    padding: 10,
-    borderRadius: 5,
+    padding: 12,
+    borderRadius: 8,
     flex: 1,
     marginHorizontal: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
   },
   updateButton: {
     backgroundColor: '#4CAF50',
@@ -808,6 +993,10 @@ const styles = StyleSheet.create({
     color: 'white',
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  currentYearTitle: {
+    backgroundColor: '#4CAF50',
+    color: 'white',
   },
 });
 

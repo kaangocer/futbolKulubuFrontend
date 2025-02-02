@@ -21,6 +21,7 @@ const Uyeler = () => {
         BabaTelNo: '',
         Adres: '',
     });
+    const [searchQuery, setSearchQuery] = useState('');
 
     const API_BASE_URL = 'http://192.168.1.21:3000';
 
@@ -110,74 +111,94 @@ const Uyeler = () => {
     const handleAddUye = async () => {
         if (!validateForm()) return;
 
-        try {
-            const uyeData = {
-                ...formData,
-                KullaniciId: parseInt(formData.KullaniciId),
-                GrupId: parseInt(formData.GrupId),
-                DogumYili: parseInt(formData.DogumYili)
-            };
+        Alert.alert(
+            'Onay',
+            'Yeni üye eklemek istediğinizden emin misiniz?',
+            [
+                { text: 'İptal', style: 'cancel' },
+                {
+                    text: 'Ekle',
+                    onPress: async () => {
+                        try {
+                            const uyeData = {
+                                ...formData,
+                                KullaniciId: parseInt(formData.KullaniciId),
+                                GrupId: parseInt(formData.GrupId),
+                                DogumYili: parseInt(formData.DogumYili)
+                            };
 
-            
-
-            const response = await axios.post(`${API_BASE_URL}/uyeler`, uyeData);
-            const newUyeler = [...uyeler, response.data].sort((a, b) => {
-                const nameA = `${a.Ad} ${a.SoyAd}`.toLowerCase();
-                const nameB = `${b.Ad} ${b.SoyAd}`.toLowerCase();
-                return nameA.localeCompare(nameB);
-            });
-            setUyeler(newUyeler);
-            Alert.alert('Başarılı', 'Üye başarıyla eklendi');
-            resetForm();
-        } catch (error) {
-            console.error('Hata detayı:', error.response?.data || error.message);
-            Alert.alert('Hata', 'Üye eklenirken bir hata oluştu');
-        }
+                            const response = await axios.post(`${API_BASE_URL}/uyeler`, uyeData);
+                            const newUyeler = [...uyeler, response.data].sort((a, b) => {
+                                const nameA = `${a.Ad} ${a.SoyAd}`.toLowerCase();
+                                const nameB = `${b.Ad} ${b.SoyAd}`.toLowerCase();
+                                return nameA.localeCompare(nameB);
+                            });
+                            setUyeler(newUyeler);
+                            Alert.alert('Başarılı', `${formData.Ad} ${formData.SoyAd} başarıyla eklendi`);
+                            resetForm();
+                        } catch (error) {
+                            console.error('Hata detayı:', error.response?.data || error.message);
+                            Alert.alert('Hata', 'Üye eklenirken bir hata oluştu');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleUpdateUye = async () => {
         if (!selectedUye || !validateForm()) return;
 
-        try {
-            const uyeData = {
-                KullaniciId: 1,  // Sabit değer
-                GrupId: parseInt(formData.GrupId) || 1,
-                TcNo: formData.TcNo,
-                Ad: formData.Ad,
-                SoyAd: formData.SoyAd,
-                TelNo: formData.TelNo,
-                DogumYili: parseInt(formData.DogumYili) || null,
-                AnneAdi: formData.AnneAdi,
-                BabaAdi: formData.BabaAdi,
-                AnneTelNo: formData.AnneTelNo,
-                BabaTelNo: formData.BabaTelNo,
-                Adres: formData.Adres
-            };
-
-            
-
-            const response = await axios.put(`${API_BASE_URL}/uyeler/${selectedUye.UyeId}`, uyeData);
-            const updatedUyeler = uyeler.map(uye => 
-                uye.UyeId === selectedUye.UyeId ? response.data : uye
-            ).sort((a, b) => {
-                const nameA = `${a.Ad} ${a.SoyAd}`.toLowerCase();
-                const nameB = `${b.Ad} ${b.SoyAd}`.toLowerCase();
-                return nameA.localeCompare(nameB);
-            });
-            
-            setUyeler(updatedUyeler);
-            Alert.alert('Başarılı', 'Üye başarıyla güncellendi');
-            resetForm();
-        } catch (error) {
-            console.error('Hata detayı:', error.response?.data || error.message);
-            Alert.alert('Hata', 'Üye güncellenirken bir hata oluştu');
-        }
-    };
-
-    const handleDeleteUye = async (UyeId) => {
         Alert.alert(
             'Onay',
-            'Bu üyeyi silmek istediğinizden emin misiniz?',
+            `${formData.Ad} ${formData.SoyAd} bilgilerini güncellemek istediğinizden emin misiniz?`,
+            [
+                { text: 'İptal', style: 'cancel' },
+                {
+                    text: 'Güncelle',
+                    onPress: async () => {
+                        try {
+                            const uyeData = {
+                                KullaniciId: 1,
+                                GrupId: parseInt(formData.GrupId) || 1,
+                                TcNo: formData.TcNo,
+                                Ad: formData.Ad,
+                                SoyAd: formData.SoyAd,
+                                TelNo: formData.TelNo,
+                                DogumYili: parseInt(formData.DogumYili) || null,
+                                AnneAdi: formData.AnneAdi,
+                                BabaAdi: formData.BabaAdi,
+                                AnneTelNo: formData.AnneTelNo,
+                                BabaTelNo: formData.BabaTelNo,
+                                Adres: formData.Adres
+                            };
+
+                            const response = await axios.put(`${API_BASE_URL}/uyeler/${selectedUye.UyeId}`, uyeData);
+                            const updatedUyeler = uyeler.map(uye => 
+                                uye.UyeId === selectedUye.UyeId ? response.data : uye
+                            ).sort((a, b) => {
+                                const nameA = `${a.Ad} ${a.SoyAd}`.toLowerCase();
+                                const nameB = `${b.Ad} ${b.SoyAd}`.toLowerCase();
+                                return nameA.localeCompare(nameB);
+                            });
+                            
+                            setUyeler(updatedUyeler);
+                            Alert.alert('Başarılı', `${formData.Ad} ${formData.SoyAd} bilgileri güncellendi`);
+                            resetForm();
+                        } catch (error) {
+                            console.error('Hata detayı:', error.response?.data || error.message);
+                            Alert.alert('Hata', 'Üye güncellenirken bir hata oluştu');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleDeleteUye = async (uye) => {
+        Alert.alert(
+            'Onay',
+            `${uye.Ad} ${uye.SoyAd} üyesini silmek istediğinizden emin misiniz?`,
             [
                 { text: 'İptal', style: 'cancel' },
                 {
@@ -185,11 +206,11 @@ const Uyeler = () => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const response = await axios.delete(`${API_BASE_URL}/uyeler/${UyeId}`);
+                            const response = await axios.delete(`${API_BASE_URL}/uyeler/${uye.UyeId}`);
                             if (response.status === 200) {
-                                const newUyeler = uyeler.filter(uye => uye.UyeId !== UyeId);
+                                const newUyeler = uyeler.filter(u => u.UyeId !== uye.UyeId);
                                 setUyeler(newUyeler);
-                                Alert.alert('Başarılı', 'Üye başarıyla silindi');
+                                Alert.alert('Başarılı', `${uye.Ad} ${uye.SoyAd} başarıyla silindi`);
                                 resetForm();
                             }
                         } catch (error) {
@@ -222,6 +243,15 @@ const Uyeler = () => {
             Adres: uye.Adres || ''
         });
     };
+
+    const filteredUyeler = uyeler.filter(uye => {
+        const query = searchQuery.toLowerCase();
+        return (
+            uye.Ad.toLowerCase().includes(query) ||
+            uye.SoyAd.toLowerCase().includes(query) ||
+            uye.TcNo.includes(searchQuery)
+        );
+    });
 
     return (
         <View style={styles.container}>
@@ -318,8 +348,16 @@ const Uyeler = () => {
 
             <View style={styles.listContainer}>
                 <Text style={styles.listHeader}>Üye Listesi</Text>
+                
+                <TextInput
+                    style={[styles.input, styles.searchInput]}
+                    placeholder="Ad, Soyad veya TC No ile ara..."
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                />
+
                 <FlatList
-                    data={uyeler}
+                    data={filteredUyeler}
                     keyExtractor={(item) => item.UyeId.toString()}
                     renderItem={({ item }) => (
                         <View style={styles.listItem}>
@@ -353,7 +391,7 @@ const Uyeler = () => {
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.button, styles.deleteButton]}
-                                    onPress={() => handleDeleteUye(item.UyeId)}
+                                    onPress={() => handleDeleteUye(item)}
                                 >
                                     <Text style={styles.buttonText}>Sil</Text>
                                 </TouchableOpacity>
@@ -506,6 +544,11 @@ const styles = StyleSheet.create({
         width: '100%',
         marginTop: Platform.OS === 'android' ? -8 : 0,
         marginBottom: Platform.OS === 'android' ? -8 : 0,
+    },
+    searchInput: {
+        marginBottom: 10,
+        backgroundColor: '#fff',
+        paddingHorizontal: 15,
     },
 });
 

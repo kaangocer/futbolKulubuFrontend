@@ -12,6 +12,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import axios from 'axios';
 import moment from 'moment';
 import 'moment/locale/tr';  // Türkçe tarih formatı için
+import { useNavigation } from '@react-navigation/native';
+import Modal from 'react-native-modal';
 
 const Yoklama = () => {
   const [groupedUyeler, setGroupedUyeler] = useState({});
@@ -21,9 +23,25 @@ const Yoklama = () => {
   const [selectedYoklamalar, setSelectedYoklamalar] = useState({});
   const [weekends, setWeekends] = useState([]);
   const [uyeler, setUyeler] = useState([]);
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(moment().month());
+  const [selectedYear, setSelectedYear] = useState(moment().year());
+  const [tempMonth, setTempMonth] = useState(moment().month());
+  const [tempYear, setTempYear] = useState(moment().year());
+  
+  // Yıl listesi oluştur (5 yıl öncesinden 5 yıl sonrasına)
+  const years = Array.from(
+    { length: 11 },
+    (_, i) => moment().year() - 5 + i
+  );
+
+  // Ay listesi
+  const months = moment.months();
 
   // useRef ile son seçilen tarihi tut
   const lastSelectedDate = useRef(null);
+
+  const navigation = useNavigation();
 
   useEffect(() => {
     fetchUyelerVeGruplar();
@@ -38,18 +56,37 @@ const Yoklama = () => {
     }
   }, [selectedDate]);
 
-  // Ay içindeki haftasonlarını oluştur
-  const generateWeekends = () => {
-    const startOfMonth = moment().startOf('month');
-    const endOfMonth = moment().endOf('month');
+  const handleMonthYearSelect = (month, year) => {
+    setTempMonth(month);
+    setTempYear(year);
+  };
+
+  const handleDateConfirm = () => {
+    setSelectedMonth(tempMonth);
+    setSelectedYear(tempYear);
+    setDatePickerVisible(false);
+    generateWeekends(tempMonth, tempYear);
+  };
+
+  // Modal açılırken geçici değerleri güncelle
+  const handleOpenModal = () => {
+    setTempMonth(selectedMonth);
+    setTempYear(selectedYear);
+    setDatePickerVisible(true);
+  };
+
+  // generateWeekends fonksiyonunu güncelle
+  const generateWeekends = useCallback((month = selectedMonth, year = selectedYear) => {
+    const startOfMonth = moment().year(year).month(month).startOf('month');
+    const endOfMonth = moment().year(year).month(month).endOf('month');
     const weekendDays = [];
 
     let currentDay = startOfMonth.clone();
     
     while (currentDay.isSameOrBefore(endOfMonth)) {
-      if (currentDay.day() === 6 || currentDay.day() === 0) { // 6 = Cumartesi, 0 = Pazar
+      if (currentDay.day() === 6 || currentDay.day() === 0) {
         weekendDays.push({
-          date: currentDay.clone(), // Tarihi clone'layarak yeni bir moment objesi oluştur
+          date: currentDay.clone(),
           weekNumber: Math.ceil(currentDay.date() / 7),
           dayName: currentDay.locale('tr').format('dddd'),
           formattedDate: currentDay.format('DD-MM-YYYY')
@@ -62,7 +99,7 @@ const Yoklama = () => {
     if (weekendDays.length > 0) {
       handleDateSelect(weekendDays[0]);
     }
-  };
+  }, [selectedMonth, selectedYear]);
 
   const fetchUyelerVeGruplar = async () => {
     try {
@@ -213,66 +250,92 @@ const Yoklama = () => {
   }, [yoklamaDurumu, selectedYoklamalar]); // Bağımlılıklar: yoklama durumu ve seçili yoklamalar değişince yeniden render et
 
   const handleYoklamaUpdate = async (grupId) => {
-    try {
-      // Seçili gruptaki üyelerin yoklamalarını filtrele
-      const grupUyeleri = Object.entries(selectedYoklamalar).filter(([uyeId]) => {
-        const uye = uyeler.find(u => u.UyeId === parseInt(uyeId));
-        return uye && uye.GrupId === parseInt(grupId);
-      });
+    // Seçili gruptaki üyelerin yoklamalarını filtrele
+    const grupUyeleri = Object.entries(selectedYoklamalar).filter(([uyeId]) => {
+      const uye = uyeler.find(u => u.UyeId === parseInt(uyeId));
+      return uye && uye.GrupId === parseInt(grupId);
+    });
 
-      // Seçili yoklama yoksa uyarı ver
-      if (grupUyeleri.length === 0) {
-        Alert.alert("Uyarı", "Lütfen en az bir yoklama durumu seçin!");
-        return;
-      }
-
-      setLoading(true);
-      const formattedDate = moment(selectedDate).format('YYYY-MM-DD');
-
-      // Tüm güncellemeleri bir dizide topla
-      const updatePromises = grupUyeleri.map(async ([uyeId, durum]) => {
-        const mevcutYoklama = yoklamaDurumu[uyeId];
-        const yoklamaData = {
-          UyeId: parseInt(uyeId),
-          Tarih: formattedDate,
-          YoklamaDurum: durum
-        };
-
-        // Mevcut kayıt varsa güncelle, yoksa yeni kayıt oluştur
-        if (mevcutYoklama?.YoklamaId) {
-          return axios.put(
-            `http://192.168.1.21:3000/yoklamalar/${mevcutYoklama.YoklamaId}`, 
-            yoklamaData
-          );
-        } else {
-          return axios.post('http://192.168.1.21:3000/yoklamalar', yoklamaData);
-        }
-      });
-
-      // Tüm güncellemeleri bekle
-      await Promise.all(updatePromises);
-
-      // Güncel verileri yükle
-      const selectedDateStr = moment(selectedDate).format('DD-MM-YYYY');
-      const response = await axios.get(`http://192.168.1.21:3000/yoklamalar/tarih/${selectedDateStr}`);
-      
-      // Yeni verileri state'e aktar
-      const yeniYoklamalar = response.data.reduce((acc, yoklama) => {
-        acc[yoklama.UyeId] = yoklama;
-        return acc;
-      }, {});
-      
-      // State'leri güncelle
-      setYoklamaDurumu(yeniYoklamalar);
-      setSelectedYoklamalar({});
-      setLoading(false);
-      Alert.alert("Başarılı", "Yoklamalar kaydedildi!");
-
-    } catch (error) {
-      setLoading(false);
-      console.error('Yoklama kaydedilirken hata:', error);
-      Alert.alert("Hata", "Yoklama kaydedilirken bir hata oluştu.");
+    // Seçili yoklama yoksa uyarı ver
+    if (grupUyeleri.length === 0) {
+      Alert.alert("Uyarı", "Lütfen en az bir yoklama durumu seçin!");
+      return;
     }
+
+    // Onay dialogu göster
+    Alert.alert(
+      "Yoklama Güncelleme",
+      "Seçili yoklamaları güncellemek istediğinize emin misiniz?",
+      [
+        {
+          text: "İptal",
+          style: "cancel"
+        },
+        {
+          text: "Güncelle",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const formattedDate = moment(selectedDate).format('YYYY-MM-DD');
+
+              // Tüm güncellemeleri bir dizide topla
+              const updatePromises = grupUyeleri.map(async ([uyeId, durum]) => {
+                const mevcutYoklama = yoklamaDurumu[uyeId];
+                const yoklamaData = {
+                  UyeId: parseInt(uyeId),
+                  Tarih: formattedDate,
+                  YoklamaDurum: durum
+                };
+
+                // Mevcut kayıt varsa güncelle, yoksa yeni kayıt oluştur
+                if (mevcutYoklama?.YoklamaId) {
+                  return axios.put(
+                    `http://192.168.1.21:3000/yoklamalar/${mevcutYoklama.YoklamaId}`, 
+                    yoklamaData
+                  );
+                } else {
+                  return axios.post('http://192.168.1.21:3000/yoklamalar', yoklamaData);
+                }
+              });
+
+              // Tüm güncellemeleri bekle
+              await Promise.all(updatePromises);
+
+              // Güncel verileri yükle
+              const selectedDateStr = moment(selectedDate).format('DD-MM-YYYY');
+              const response = await axios.get(`http://192.168.1.21:3000/yoklamalar/tarih/${selectedDateStr}`);
+              
+              // Yeni verileri state'e aktar
+              const yeniYoklamalar = response.data.reduce((acc, yoklama) => {
+                acc[yoklama.UyeId] = yoklama;
+                return acc;
+              }, {});
+              
+              setYoklamaDurumu(yeniYoklamalar);
+              setSelectedYoklamalar({});
+              setLoading(false);
+              
+              // Başarı mesajı göster
+              Alert.alert(
+                "Başarılı", 
+                "Yoklamalar başarıyla güncellendi!",
+                [{ text: "Tamam" }]
+              );
+
+            } catch (error) {
+              setLoading(false);
+              console.error('Yoklama kaydedilirken hata:', error);
+              Alert.alert(
+                "Hata",
+                "Yoklama güncellenirken bir hata oluştu. Lütfen tekrar deneyin.",
+                [{ text: "Tamam" }]
+              );
+            }
+          },
+          style: "default"
+        }
+      ]
+    );
   };
 
   // Tarih seçimi butonlarını güncelleyelim
@@ -327,14 +390,132 @@ const Yoklama = () => {
 
   return (
     <View style={styles.container}>
-      {renderWeekendButtons()}
+      <View style={styles.monthSelector}>
+        <TouchableOpacity 
+          style={styles.monthYearButton}
+          onPress={handleOpenModal}
+        >
+          <Text style={styles.monthYearText}>
+            {moment().month(selectedMonth).locale('tr').format('MMMM')} {selectedYear}
+          </Text>
+          <Icon name="calendar-today" size={24} color="#1976d2" />
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView>
+      <Modal
+        isVisible={isDatePickerVisible}
+        onBackdropPress={() => setDatePickerVisible(false)}
+        style={styles.modal}
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Ay ve Yıl Seçin</Text>
+          
+          <View style={styles.datePickerContainer}>
+            <ScrollView style={styles.pickerScrollView}>
+              {months.map((month, index) => (
+                <TouchableOpacity
+                  key={month}
+                  style={[
+                    styles.pickerItem,
+                    tempMonth === index && styles.selectedPickerItem
+                  ]}
+                  onPress={() => handleMonthYearSelect(index, tempYear)}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    tempMonth === index && styles.selectedPickerItemText
+                  ]}>
+                    {month}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <ScrollView style={styles.pickerScrollView}>
+              {years.map(year => (
+                <TouchableOpacity
+                  key={year}
+                  style={[
+                    styles.pickerItem,
+                    tempYear === year && styles.selectedPickerItem
+                  ]}
+                  onPress={() => handleMonthYearSelect(tempMonth, year)}
+                >
+                  <Text style={[
+                    styles.pickerItemText,
+                    tempYear === year && styles.selectedPickerItemText
+                  ]}>
+                    {year}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={() => setDatePickerVisible(false)}
+            >
+              <Text style={styles.cancelButtonText}>İptal</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, styles.confirmButton]}
+              onPress={handleDateConfirm}
+            >
+              <Text style={styles.confirmButtonText}>Ara</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <View style={styles.weekendListContainer}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.weekendListContent}
+          style={styles.weekendList}
+        >
+          {weekends.map((weekend, index) => {
+            const isSelected = selectedDate && 
+              moment(selectedDate).format('DD-MM-YYYY') === moment(weekend.date).format('DD-MM-YYYY');
+            
+            return (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.weekendItem,
+                  isSelected && styles.selectedWeekend
+                ]}
+                onPress={() => handleDateSelect(weekend)}
+              >
+                <Text style={styles.weekNumber}>{weekend.weekNumber}. Hafta</Text>
+                <Text style={styles.dayName}>{weekend.dayName}</Text>
+                <Text style={styles.dateText}>
+                  {moment(weekend.date).format('D MMMM')}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+      >
         {Object.entries(groupedUyeler).map(([grupId, grupData]) => (
           <View key={grupId} style={styles.grupContainer}>
             <Text style={styles.grupBaslik}>{grupData.grupAdi}</Text>
             {grupData.uyeler.map((uye, index) => (
-              <View key={uye.UyeId} style={styles.uyeRow}>
+              <View 
+                key={uye.UyeId} 
+                style={[
+                  styles.uyeRow,
+                  index % 2 === 0 ? styles.evenRow : styles.oddRow
+                ]}
+              >
                 <View style={styles.uyeInfo}>
                   <Text style={styles.uyeNumara}>{index + 1}.</Text>
                   <View>
@@ -345,18 +526,32 @@ const Yoklama = () => {
                 {renderYoklamaButtons(uye)}
               </View>
             ))}
-            {/* Her grubun altına güncelleme butonu */}
-            {Object.keys(selectedYoklamalar).length > 0 && (
-              <TouchableOpacity 
-                style={styles.updateButton}
-                onPress={() => handleYoklamaUpdate(grupId)}
-              >
-                <Text style={styles.updateButtonText}>Grubu Güncelle</Text>
-              </TouchableOpacity>
-            )}
+            {/* Her grubun altında sürekli görünür güncelleme butonu */}
+            <TouchableOpacity 
+              style={[
+                styles.updateButton,
+                Object.keys(selectedYoklamalar).length === 0 && styles.updateButtonDisabled
+              ]}
+              onPress={() => handleYoklamaUpdate(grupId)}
+              disabled={Object.keys(selectedYoklamalar).length === 0}
+            >
+              <Text style={[
+                styles.updateButtonText,
+                Object.keys(selectedYoklamalar).length === 0 && styles.updateButtonTextDisabled
+              ]}>
+                Grubu Güncelle
+              </Text>
+            </TouchableOpacity>
           </View>
         ))}
       </ScrollView>
+
+      <TouchableOpacity 
+        style={styles.gecmisButton}
+        onPress={() => navigation.navigate('YoklamaGecmisi')}
+      >
+        <Text style={styles.gecmisButtonText}>Yoklama Geçmişi</Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -373,71 +568,227 @@ const styles = StyleSheet.create({
   },
   weekendListContainer: {
     backgroundColor: '#fff',
-    padding: 10,
+    paddingTop: 12,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    height: 190, // Sabit yükseklik
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  monthTitle: {
+  monthSelector: {
+    backgroundColor: '#fff',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  monthYearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    width: '100%',
+    justifyContent: 'center',
+  },
+  monthYearText: {
     fontSize: 18,
+    fontWeight: '600',
+    color: '#2196F3',
+    textTransform: 'capitalize',
+  },
+  modal: {
+    margin: 0,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 10,
     textAlign: 'center',
-    color: '#333',
+    marginBottom: 24,
+    color: '#1976d2',
+    letterSpacing: 0.5,
+  },
+  datePickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+    gap: 16,
+  },
+  pickerScrollView: {
+    flex: 1,
+    maxHeight: 320,
+    borderRadius: 16,
+    backgroundColor: '#f8f9fa',
+    padding: 8,
+  },
+  pickerItem: {
+    padding: 16,
+    borderRadius: 12,
+    marginVertical: 4,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  selectedPickerItem: {
+    backgroundColor: '#2196F3',
+    shadowColor: '#1976d2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#424242',
+    fontWeight: '500',
+  },
+  selectedPickerItemText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  closeButton: {
+    backgroundColor: '#2196F3',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: '#1976d2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  weekendList: {
+    flex: 1,
+  },
+  weekendListContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   weekendItem: {
-    padding: 10,
-    marginRight: 10,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
-    minWidth: 120,
+    padding: 12,
+    marginRight: 12,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    width: 135,
+    height: 140, // Yükseklik artırıldı
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
   selectedWeekend: {
     backgroundColor: '#e3f2fd',
-    borderWidth: 1,
-    borderColor: '#2196f3',
+    borderColor: '#2196F3',
+    borderWidth: 2,
+    shadowColor: '#1976d2',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 5,
   },
   weekNumber: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
-    color: '#666',
+    color: '#1976d2',
+    marginBottom: 6,
+    letterSpacing: 0.5,
   },
   dayName: {
     fontSize: 16,
-    color: '#333',
+    color: '#424242',
+    fontWeight: '600',
+    textAlign: 'center',
     marginVertical: 4,
+    letterSpacing: 0.25,
   },
   dateText: {
     fontSize: 14,
-    color: '#666',
+    color: '#757575',
+    marginTop: 4,
+    textAlign: 'center',
+    letterSpacing: 0.25,
   },
   scrollView: {
     flex: 1,
+    marginTop: 5,
+  },
+  scrollViewContent: {
+    padding: 10,
   },
   grupContainer: {
-    marginBottom: 20,
+    marginTop: 5,
+    marginBottom: 15,
     backgroundColor: '#fff',
     borderRadius: 8,
-    margin: 10,
-    padding: 10,
+    overflow: 'hidden',
     elevation: 2,
   },
   grupBaslik: {
     fontSize: 18,
     fontWeight: 'bold',
-    padding: 10,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 4,
-    marginBottom: 10,
+    padding: 12,
+    backgroundColor: '#1976d2',
+    color: '#ffffff',
+    marginBottom: 0,
     textAlign: 'center',
+    elevation: 1,
   },
   uyeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#e0e0e0',
+  },
+  evenRow: {
+    backgroundColor: '#ffffff',
+  },
+  oddRow: {
+    backgroundColor: '#f5f5f5',
   },
   uyeInfo: {
     flexDirection: 'row',
@@ -449,18 +800,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginRight: 10,
     width: 30,
+    color: '#1976d2',
   },
   uyeAd: {
     fontSize: 16,
     fontWeight: '500',
+    color: '#333333',
   },
   uyeTc: {
     fontSize: 14,
-    color: '#666',
+    color: '#666666',
   },
   yoklamaButtons: {
     flexDirection: 'row',
     gap: 10,
+    marginLeft: 10,
   },
   yoklamaButton: {
     padding: 8,
@@ -484,16 +838,84 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   updateButton: {
-    backgroundColor: '#2196f3',
-    padding: 15,
+    backgroundColor: '#2196F3',
+    padding: 12,
     margin: 10,
     borderRadius: 8,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  updateButtonDisabled: {
+    backgroundColor: '#e0e0e0',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   updateButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  updateButtonTextDisabled: {
+    color: '#9e9e9e',
+  },
+  gecmisButton: {
+    backgroundColor: '#2196F3',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  gecmisButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  bottomContainer: {
+    padding: 15,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    marginTop: 10,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 16,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  confirmButton: {
+    backgroundColor: '#2196F3',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

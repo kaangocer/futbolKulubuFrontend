@@ -11,6 +11,7 @@ import Yoklama from './Yoklama';
 import LoginPanel from './LoginPanel'; 
 import Uyeler from './Uyeler';
 import RegisterPanel from './RegisterPanel';
+import YoklamaGecmisi from './YoklamaGecmisi';
 
 const Stack = createStackNavigator(); 
 
@@ -109,6 +110,19 @@ export default function App() {
           component={Yoklama} 
           options={({ navigation }) => ({
             title: 'Yoklama',
+            headerRight: () => (
+              <TouchableOpacity onPress={() => handleLogout(navigation)} style={styles.logoutButton}>
+                <Text style={styles.logoutText}>Çıkış</Text>
+              </TouchableOpacity>
+            ),
+          })}
+        />
+        
+        <Stack.Screen 
+          name="YoklamaGecmisi" 
+          component={YoklamaGecmisi} 
+          options={({ navigation }) => ({
+            title: 'Yoklama Geçmişi',
             headerRight: () => (
               <TouchableOpacity onPress={() => handleLogout(navigation)} style={styles.logoutButton}>
                 <Text style={styles.logoutText}>Çıkış</Text>
